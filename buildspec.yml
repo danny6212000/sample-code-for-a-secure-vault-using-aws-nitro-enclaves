@@ -1,15 +1,44 @@
 version: 0.2
 phases:
+  install:
+    commands:
+      - sudo dnf install --releasever=latest -y aws-nitro-enclaves-cli aws-nitro-enclaves-cli-devel
   build:
     commands:
+      - echo Build started on `date`
+      - docker build --build-arg TARGETPLATFORM=aarch64-unknown-linux-gnu -t parent-vault:latest -f parent/Dockerfile parent/
       - |
         docker run --rm \
           -v "$(pwd)/enclave":/workspace \
-          -w /workspace \
-          public.ecr.aws/docker/library/rust:alpine@sha256:7f752ee8ea5deb9f4863d8c3f228a216a6466619882f09a44b9eda9617dc7770 \
-          sh -c "cargo generate-lockfile 2>&1 && echo '===LOCKFILE_START===' && cat Cargo.lock && echo '===LOCKFILE_END==='"
+          gcr.io/kaniko-project/executor:v1.23.2 \
+          --dockerfile /workspace/Dockerfile \
+          --context /workspace \
+          --destination enclave-vault:latest \
+          --reproducible \
+          --custom-platform=linux/arm64 \
+          --build-arg TARGETPLATFORM=aarch64-unknown-linux-musl \
+          --no-push \
+          --tarPath=/workspace/enclave-vault.tar
+      - docker load -i enclave/enclave-vault.tar
+      - echo Build completed on `date`
+  post_build:
+    commands:
+      - '[ ${CODEBUILD_BUILD_SUCCEEDING:-0} -eq 1 ] || exit 1'
+      - CONTAINER_ID=$(docker create parent-vault:latest)
+      - docker cp $CONTAINER_ID:/app/parent-vault ./parent-vault
+      - docker rm $CONTAINER_ID
+      - nitro-cli build-enclave --docker-uri "enclave-vault:latest" --output-file enclave-vault.eif > temp_measurements.json
+      - PCR3=$(python -c"import hashlib; h=hashlib.sha384(); h.update(b'\0'*48); h.update(\"${INSTANCE_ROLE_ARN}\".encode('utf-8')); print(h.hexdigest())")
+      - jq --arg PCR3 "$PCR3" '.Measurements += {"PCR3":$PCR3}' temp_measurements.json > measurements.json
+      - aws secretsmanager put-secret-value --secret-id "${MEASUREMENT_SECRET_ID}" --secret-string file://measurements.json
 artifacts:
   discard-paths: yes
   files:
+    - parent-vault
+    - enclave-vault.eif
     - vault_template.yml
     - vault_template_configuration.json
+cache:
+  files:
+    - '/root/.cargo/registry/**/*'
+    - '/root/.docker/**/*'
