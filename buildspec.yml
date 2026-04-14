@@ -16,6 +16,7 @@ phases:
           --destination enclave-vault:latest \
           --reproducible \
           --custom-platform=linux/arm64 \
+          --build-arg TARGETPLATFORM=aarch64-unknown-linux-musl \
           --no-push \
           --tarPath=/workspace/enclave-vault.tar
       - docker load -i enclave/enclave-vault.tar
