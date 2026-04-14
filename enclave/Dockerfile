@@ -175,6 +175,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 FROM chef AS builder
 ARG TARGETPLATFORM
 COPY --from=planner /app/recipe.json recipe.json
+COPY --from=planner /app/Cargo.lock Cargo.lock
 RUN cargo chef cook --release --target $TARGETPLATFORM --recipe-path recipe.json
 COPY . .
 RUN cargo build --target $TARGETPLATFORM --release --color never
