@@ -7,11 +7,12 @@ phases:
     commands:
       - echo Build started on `date`
       - docker build --build-arg TARGETPLATFORM=aarch64-unknown-linux-gnu -t parent-vault:latest -f parent/Dockerfile parent/
+      - cp Cargo.lock enclave/
       - |
         docker run --rm \
-          -v "$(pwd)":/workspace \
+          -v "$(pwd)/enclave":/workspace \
           gcr.io/kaniko-project/executor:v1.23.2 \
-          --dockerfile /workspace/enclave/Dockerfile \
+          --dockerfile /workspace/Dockerfile \
           --context /workspace \
           --destination enclave-vault:latest \
           --reproducible \
@@ -19,7 +20,7 @@ phases:
           --build-arg TARGETPLATFORM=aarch64-unknown-linux-musl \
           --no-push \
           --tarPath=/workspace/enclave-vault.tar
-      - docker load -i enclave-vault.tar
+      - docker load -i enclave/enclave-vault.tar
       - echo Build completed on `date`
   post_build:
     commands:
