@@ -6,7 +6,7 @@ phases:
   build:
     commands:
       - echo Build started on `date`
-      - docker build -t parent-vault:latest -f parent/Dockerfile parent/
+      - docker build --build-arg TARGETPLATFORM=aarch64-unknown-linux-gnu -t parent-vault:latest -f parent/Dockerfile parent/
       - |
         docker run --rm \
           -v "$(pwd)/enclave":/workspace \
