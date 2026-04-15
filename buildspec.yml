@@ -6,20 +6,8 @@ phases:
   build:
     commands:
       - echo Build started on `date`
-      - docker build --build-arg TARGETPLATFORM=aarch64-unknown-linux-gnu -t parent-vault:latest -f parent/Dockerfile parent/
-      - |
-        docker run --rm \
-          -v "$(pwd)/enclave":/workspace \
-          gcr.io/kaniko-project/executor:v1.23.2 \
-          --dockerfile /workspace/Dockerfile \
-          --context /workspace \
-          --destination enclave-vault:latest \
-          --reproducible \
-          --custom-platform=linux/arm64 \
-          --build-arg TARGETPLATFORM=aarch64-unknown-linux-musl \
-          --no-push \
-          --tarPath=/workspace/enclave-vault.tar
-      - docker load -i enclave/enclave-vault.tar
+      - export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+      - docker buildx bake
       - echo Build completed on `date`
   post_build:
     commands:
@@ -27,7 +15,10 @@ phases:
       - CONTAINER_ID=$(docker create parent-vault:latest)
       - docker cp $CONTAINER_ID:/app/parent-vault ./parent-vault
       - docker rm $CONTAINER_ID
-      - nitro-cli build-enclave --docker-uri "enclave-vault:latest" --output-file enclave-vault.eif > temp_measurements.json
+      - echo "${PRIVATE_KEY}" > nitro_vault_key.pem
+      - openssl req -new -key nitro_vault_key.pem -sha384 -nodes -subj "/CN=AWS/C=US/ST=WA/L=Seattle/O=Amazon/OU=AWS" -out nitro_vault_csr.pem
+      - openssl x509 -req -days 365 -in nitro_vault_csr.pem -out nitro_vault_cert.pem -sha384 -signkey nitro_vault_key.pem
+      - nitro-cli build-enclave --docker-uri "enclave-vault:latest" --output-file enclave-vault.eif --private-key nitro_vault_key.pem --signing-certificate nitro_vault_cert.pem > temp_measurements.json
       - PCR3=$(python -c"import hashlib; h=hashlib.sha384(); h.update(b'\0'*48); h.update(\"${INSTANCE_ROLE_ARN}\".encode('utf-8')); print(h.hexdigest())")
       - jq --arg PCR3 "$PCR3" '.Measurements += {"PCR3":$PCR3}' temp_measurements.json > measurements.json
       - aws secretsmanager put-secret-value --secret-id "${MEASUREMENT_SECRET_ID}" --secret-string file://measurements.json
