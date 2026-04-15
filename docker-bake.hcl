@@ -3,10 +3,6 @@
 //   export SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
 //   docker buildx bake -f docker-bake.hcl
 
-variable "SOURCE_DATE_EPOCH" {
-    default = "0"
-}
-
 group "default" {
     targets = ["parent", "enclave"]
 }
