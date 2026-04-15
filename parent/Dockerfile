@@ -9,7 +9,6 @@
 ####################################################################################################
 FROM public.ecr.aws/amazonlinux/amazonlinux:2023@sha256:dc1dacae45ec346969d430237ddd1a282170ec9f322d4b3cf28ac8f1975070a1 AS chef
 ARG TARGETPLATFORM
-ARG SOURCE_DATE_EPOCH
 
 WORKDIR /app
 RUN dnf install -y gcc gcc-c++ make openssl-devel pkg-config
@@ -30,7 +29,6 @@ RUN cargo chef prepare --recipe-path recipe.json
 ####################################################################################################
 FROM chef AS builder
 ARG TARGETPLATFORM
-ARG SOURCE_DATE_EPOCH
 
 COPY --from=planner /app/recipe.json recipe.json
 RUN cargo chef cook --release --target $TARGETPLATFORM --recipe-path recipe.json
