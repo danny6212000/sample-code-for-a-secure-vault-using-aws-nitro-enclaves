@@ -1,21 +1,164 @@
 # Copyright 2020-2024 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 # SPDX-License-Identifier: MIT-0
 
-# Reproducible builds: pin base images to SHA256 digest
-# Update these digests when upgrading base images
+####################################################################################################
+## kmstool-enclave-cli image
+####################################################################################################
+FROM public.ecr.aws/docker/library/rust:alpine AS kmstool
+
+ARG TARGETPLATFORM
+ENV RUSTFLAGS="-C target-feature=-crt-static"
+ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
+ENV CFLAGS="-ffile-prefix-map=/=/ -frandom-seed=reproducible -fno-guess-branch-probability"
+ENV CXXFLAGS="-ffile-prefix-map=/=/ -frandom-seed=reproducible -fno-guess-branch-probability"
+
+# Install system dependencies / packages.
+RUN apk --no-cache add \
+    p11-kit-server \
+    ca-certificates \
+    cmake \
+    g++ \
+    gcc \
+    git \
+    go \
+    perl \
+    curl \
+    make \
+    linux-headers \
+    shadow \
+    sudo
+
+RUN ln -s /usr/lib /usr/lib64
+
+WORKDIR /tmp/crt-builder
+
+# Build AWS libcrypto
+RUN git clone --depth 1 -b v1.41.1 https://github.com/awslabs/aws-lc.git
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S aws-lc \
+    -B aws-lc/build
+RUN cmake --build aws-lc/build --parallel $(nproc) --target install
+
+# AWS-S2N
+RUN git clone --depth 1 -b v1.3.46 https://github.com/aws/s2n-tls.git
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S s2n-tls \
+    -B s2n-tls/build
+RUN cmake --build s2n-tls/build --parallel $(nproc) --target install
+
+# AWS-C-COMMON
+RUN git clone --depth 1 -b v0.8.0 https://github.com/awslabs/aws-c-common.git
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S aws-c-common \
+    -B aws-c-common/build
+RUN cmake --build aws-c-common/build --parallel $(nproc) --target install
+
+# AWS-C-SDKUTILS
+RUN git clone --depth 1 -b v0.1.2 https://github.com/awslabs/aws-c-sdkutils
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S aws-c-sdkutils \
+    -B aws-c-sdkutils/build
+RUN cmake --build aws-c-sdkutils/build --parallel $(nproc) --target install
+
+# AWS-C-CAL
+RUN git clone --depth 1 -b v0.5.18 https://github.com/awslabs/aws-c-cal.git
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S aws-c-cal \
+    -B aws-c-cal/build
+RUN cmake --build aws-c-cal/build --parallel $(nproc) --target install
+
+# AWS-C-IO
+RUN git clone --depth 1 -b v0.11.0 https://github.com/awslabs/aws-c-io.git
+RUN cmake \
+    -DUSE_VSOCK=1 \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S aws-c-io \
+    -B aws-c-io/build
+RUN cmake --build aws-c-io/build --parallel $(nproc) --target install
+
+# AWS-C-COMPRESSION
+RUN git clone --depth 1 -b v0.2.14 https://github.com/awslabs/aws-c-compression.git
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S aws-c-compression \
+    -B aws-c-compression/build
+RUN cmake --build aws-c-compression/build --parallel $(nproc) --target install
+
+# AWS-C-HTTP
+RUN git clone --depth 1 -b v0.6.19 https://github.com/awslabs/aws-c-http.git
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S aws-c-http \
+    -B aws-c-http/build
+RUN cmake --build aws-c-http/build --parallel $(nproc) --target install
+
+# AWS-C-AUTH
+RUN git clone --depth 1 -b v0.6.15 https://github.com/awslabs/aws-c-auth.git
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S aws-c-auth \
+    -B aws-c-auth/build
+RUN cmake --build aws-c-auth/build --parallel $(nproc) --target install
+
+# JSON-C library
+RUN git clone --depth 1 -b json-c-0.18-20240915 https://github.com/json-c/json-c.git
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S json-c \
+    -B json-c/build
+RUN cmake --build json-c/build --parallel $(nproc) --target install
+
+# NSM LIB
+RUN git clone --depth 1 -b v0.4.0 "https://github.com/aws/aws-nitro-enclaves-nsm-api"
+RUN rustup target add $TARGETPLATFORM
+RUN cd aws-nitro-enclaves-nsm-api \
+    && PATH="$PATH:/root/.cargo/bin" cargo build --release --target $TARGETPLATFORM --jobs $(nproc) -p nsm-lib \
+    && mv target/$TARGETPLATFORM/release/libnsm.so /usr/lib/ \
+    && mv target/$TARGETPLATFORM/release/nsm.h /usr/include/
+
+# AWS Nitro Enclaves SDK
+RUN git clone --depth 1 -b v0.4.3 "https://github.com/aws/aws-nitro-enclaves-sdk-c"
+RUN cmake \
+    -DCMAKE_PREFIX_PATH=/usr \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DBUILD_TESTING=0 \
+    -S aws-nitro-enclaves-sdk-c \
+    -B aws-nitro-enclaves-sdk-c/build
+RUN cmake --build aws-nitro-enclaves-sdk-c/build --parallel $(nproc) --target install
 
 ####################################################################################################
-## Chef image - using Amazon Linux to ensure glibc compatibility at runtime
+## Chef image
 ####################################################################################################
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023@sha256:dc1dacae45ec346969d430237ddd1a282170ec9f322d4b3cf28ac8f1975070a1 AS chef
+FROM kmstool AS chef
 ARG TARGETPLATFORM
 
 WORKDIR /app
-RUN dnf install -y gcc gcc-c++ make openssl-devel pkg-config
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
-ENV PATH="/root/.cargo/bin:${PATH}"
-RUN rustup target add $TARGETPLATFORM
-RUN cargo install cargo-chef --locked
+RUN cargo install cargo-chef@0.1.77 --locked
 
 ####################################################################################################
 ## Planner image
@@ -29,22 +172,38 @@ RUN cargo chef prepare --recipe-path recipe.json
 ####################################################################################################
 FROM chef AS builder
 ARG TARGETPLATFORM
-
 COPY --from=planner /app/recipe.json recipe.json
-RUN cargo chef cook --release --target $TARGETPLATFORM --recipe-path recipe.json
+COPY --from=planner /app/Cargo.lock Cargo.lock
+RUN cargo chef cook --release --target $TARGETPLATFORM --recipe-path recipe.json --jobs 1
 COPY . .
-RUN cargo build --target $TARGETPLATFORM --release --color never
+RUN cargo build --target $TARGETPLATFORM --release --color never --jobs 1
 
 ####################################################################################################
-## Final image - used only for extracting the built binary
-## Binary is deployed to EC2 via CloudFormation (vault_template.yml)
+## Runtime image
 ####################################################################################################
-FROM public.ecr.aws/amazonlinux/amazonlinux:2023-minimal@sha256:3f6c5a2858113e9bb6710dfccdace7dc698e83f7a012240a1d07b3a46d273999
+FROM public.ecr.aws/docker/library/alpine:latest AS runtime
 ARG TARGETPLATFORM
+
+RUN apk add --no-cache ca-certificates libgcc
+RUN addgroup -S vault && adduser -S vault -G vault
 
 WORKDIR /app
 
-# Copy our build
-COPY --from=builder /app/target/${TARGETPLATFORM}/release/parent-vault /app/parent-vault
+COPY --from=builder /app/target/${TARGETPLATFORM}/release/enclave-vault /app/enclave-vault
+COPY --from=kmstool /usr/lib/libnsm.so /usr/lib/libnsm.so
 
-CMD ["/app/parent-vault", "--host", "127.0.0.1"]
+ENV LD_LIBRARY_PATH="/usr/lib"
+RUN chmod +x /app/enclave-vault
+
+# Reproducible build: reset all file timestamps
+RUN find / -not -path '/dev/*' -not -path '/proc/*' -not -path '/sys/*' -not -path '/mnt/*' \
+    -newermt "@0" -writable -xdev \
+    | xargs touch --date="@0" --no-dereference 2>/dev/null || true
+
+####################################################################################################
+## Squash image for reproducibility
+####################################################################################################
+FROM scratch
+COPY --from=runtime / /
+ENV LD_LIBRARY_PATH="/usr/lib"
+CMD ["/app/enclave-vault"]
