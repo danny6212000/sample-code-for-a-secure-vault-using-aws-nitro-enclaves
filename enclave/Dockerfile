@@ -9,7 +9,6 @@
 FROM public.ecr.aws/docker/library/rust:alpine AS kmstool
 
 ARG TARGETPLATFORM
-ARG SOURCE_DATE_EPOCH
 ENV RUSTFLAGS="-C target-feature=-crt-static"
 ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
 
@@ -157,7 +156,6 @@ RUN cmake --build aws-nitro-enclaves-sdk-c/build --parallel $(nproc) --target in
 ####################################################################################################
 FROM kmstool AS chef
 ARG TARGETPLATFORM
-ARG SOURCE_DATE_EPOCH
 
 WORKDIR /app
 RUN cargo install cargo-chef --locked
@@ -185,7 +183,6 @@ RUN cargo build --target $TARGETPLATFORM --release --color never
 ####################################################################################################
 FROM public.ecr.aws/docker/library/alpine:latest AS runtime
 ARG TARGETPLATFORM
-ARG SOURCE_DATE_EPOCH
 
 RUN apk add --no-cache ca-certificates libgcc
 RUN addgroup -S vault && adduser -S vault -G vault
