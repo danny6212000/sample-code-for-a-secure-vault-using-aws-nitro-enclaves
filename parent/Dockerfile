@@ -9,8 +9,6 @@ FROM public.ecr.aws/docker/library/rust:alpine AS kmstool
 ARG TARGETPLATFORM
 ENV RUSTFLAGS="-C target-feature=-crt-static"
 ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
-ENV CFLAGS="-ffile-prefix-map=/=/ -frandom-seed=reproducible"
-ENV CXXFLAGS="-ffile-prefix-map=/=/ -frandom-seed=reproducible"
 
 # Install system dependencies / packages.
 RUN apk --no-cache add \
