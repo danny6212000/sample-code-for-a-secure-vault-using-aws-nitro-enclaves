@@ -4,7 +4,7 @@
 ####################################################################################################
 ## kmstool-enclave-cli image
 ####################################################################################################
-FROM public.ecr.aws/docker/library/rust:alpine AS kmstool
+FROM public.ecr.aws/docker/library/rust:alpine@sha256:7f752ee8ea5deb9f4863d8c3f228a216a6466619882f09a44b9eda9617dc7770 AS kmstool
 
 ARG TARGETPLATFORM
 ENV RUSTFLAGS="-C target-feature=-crt-static"
@@ -179,7 +179,7 @@ RUN cargo build --target $TARGETPLATFORM --release --color never --jobs 1
 ####################################################################################################
 ## Runtime image
 ####################################################################################################
-FROM public.ecr.aws/docker/library/alpine:latest AS runtime
+FROM public.ecr.aws/docker/library/alpine@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS runtime
 ARG TARGETPLATFORM
 
 RUN apk add --no-cache ca-certificates libgcc
