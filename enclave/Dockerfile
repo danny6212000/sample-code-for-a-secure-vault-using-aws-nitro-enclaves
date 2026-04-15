@@ -6,10 +6,10 @@
 ##
 ## based on https://github.com/aws/aws-nitro-enclaves-acm/blob/main/env/enclave/Dockerfile
 ####################################################################################################
-FROM public.ecr.aws/docker/library/rust:alpine@sha256:7f752ee8ea5deb9f4863d8c3f228a216a6466619882f09a44b9eda9617dc7770 AS kmstool
+FROM public.ecr.aws/docker/library/rust:alpine AS kmstool
+
 ARG TARGETPLATFORM
 ARG SOURCE_DATE_EPOCH
-
 ENV RUSTFLAGS="-C target-feature=-crt-static"
 ENV CMAKE_POLICY_VERSION_MINIMUM=3.5
 
@@ -174,16 +174,16 @@ RUN cargo chef prepare --recipe-path recipe.json
 ####################################################################################################
 FROM chef AS builder
 ARG TARGETPLATFORM
+
 COPY --from=planner /app/recipe.json recipe.json
-COPY --from=planner /app/Cargo.lock Cargo.lock
-RUN cargo chef cook --release --target $TARGETPLATFORM --recipe-path recipe.json --jobs 1
+RUN cargo chef cook --release --target $TARGETPLATFORM --recipe-path recipe.json
 COPY . .
-RUN cargo build --target $TARGETPLATFORM --release --color never --jobs 1
+RUN cargo build --target $TARGETPLATFORM --release --color never
 
 ####################################################################################################
 ## Final image
 ####################################################################################################
-FROM public.ecr.aws/docker/library/alpine@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659 AS runtime
+FROM public.ecr.aws/docker/library/alpine:latest AS runtime
 ARG TARGETPLATFORM
 ARG SOURCE_DATE_EPOCH
 
@@ -199,6 +199,7 @@ COPY --from=builder /app/target/${TARGETPLATFORM}/release/enclave-vault /app/enc
 COPY --from=kmstool /usr/lib/libnsm.so /usr/lib/libnsm.so
 
 ENV LD_LIBRARY_PATH="/usr/lib"
+
 RUN chmod +x /app/enclave-vault
 
 CMD ["/app/enclave-vault"]
